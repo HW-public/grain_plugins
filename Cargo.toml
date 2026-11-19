@@ -1,0 +1,11 @@
+[workspace]
+members = ["plugins/360zy", "plugins/bili-wbi"]
+resolver = "2"
+
+# 与 grain_engine/pdk/rust 的发布 profile 保持一致，保证产物尺寸可预期。
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

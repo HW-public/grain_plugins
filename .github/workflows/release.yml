@@ -1,0 +1,43 @@
+name: Release plugins
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 插件通过 ../../../grain_engine/... 引用 PDK，放到 workspace 上一级即可命中。
+      - name: Checkout grain_engine (PDK sources)
+        run: git clone --depth 1 https://github.com/HW-public/grain_engine.git ../grain_engine
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Write signing key
+        env:
+          PLUGIN_SIGNING_KEY_PEM: ${{ secrets.PLUGIN_SIGNING_KEY }}
+        run: |
+          if [ -z "$PLUGIN_SIGNING_KEY_PEM" ]; then
+            echo "secret PLUGIN_SIGNING_KEY is not set" >&2
+            exit 1
+          fi
+          umask 077
+          printf '%s\n' "$PLUGIN_SIGNING_KEY_PEM" > "$RUNNER_TEMP/plugin-signing.pem"
+
+      - name: Build and sign dist
+        run: TAG="${{ github.ref_name }}" PLUGIN_SIGNING_KEY="$RUNNER_TEMP/plugin-signing.pem" bash scripts/build_dist.sh
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" dist/* --title "${{ github.ref_name }}" --notes "Plugin release ${{ github.ref_name }}"

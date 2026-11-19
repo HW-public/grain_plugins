@@ -1,0 +1,14 @@
+# crates.io 国内镜像（rsproxy sparse）
+[source.crates-io]
+replace-with = "rsproxy-sparse"
+
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"
+
+[net]
+git-fetch-with-cli = true
+
+# 本机无 MSVC Build Tools，宿主构件（proc-macro 等）用 rustc 自带 rust-lld 链接。
+# wasm32 目标不受影响（rust-lld 本就是其默认链接器）。
+[target.x86_64-pc-windows-msvc]
+linker = "C:/Users/WH/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe"
