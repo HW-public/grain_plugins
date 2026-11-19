@@ -13,24 +13,70 @@ https://github.com/HW-public/grain_plugins/releases/latest/download/manifest.jso
 
 ```
 grain_plugins/
-├── Cargo.toml                 # workspace：members 列出全部插件 crate
+├── Cargo.toml                 # workspace：members 指向 plugins/*/rust
 ├── .cargo/config.toml         # crates.io 镜像 + Windows 下 rust-lld 链接器
 ├── keys/public.hex            # 签名公钥（32 字节 hex，单行）
-├── plugins/
-│   ├── 360zy/                 # 360资源（maccms API）插件
-│   │   ├── Cargo.toml
-│   │   └── src/lib.rs
-│   └── bili-wbi/              # 哔哩哔哩 WBI 搜索插件
-│       ├── Cargo.toml
-│       └── src/lib.rs
-├── scripts/build_dist.sh      # 构建 + 签名 + 生成 manifest.json
+├── plugins/                   # 插件目录：一个插件一个目录，语言是实现子目录
+│   ├── 360zy/                 # 360资源（maccms API）
+│   │   ├── rust/              # Rust 实现（Cargo.toml + src/lib.rs）
+│   │   └── ts/                # TypeScript 实现（index.ts，产物 build/*.wasm）
+│   └── bili-wbi/              # 哔哩哔哩 WBI
+│       ├── rust/
+│       └── ts/
+├── pdk-as/                    # AssemblyScript PDK（build.sh + src/ + probe/ + selftest/）
+├── scripts/build_dist.sh      # 按语言构建 → 签名 → 生成 manifest.json
 ├── .github/workflows/release.yml
 ├── dist/                      # 构建产物（不入库）
 └── target/                    # cargo 产物（不入库）
 ```
 
-插件通过相对路径引用 PDK：`../../../grain_engine/pdk/rust/crates/pdk`。
+Rust 插件通过相对路径引用 PDK：`../../../../grain_engine/pdk/rust/crates/pdk`。
 因此本地构建时，仓库必须与 `grain_engine` 位于同一父目录下（CI 中由 workflow 克隆到兄弟位置）。
+TS 插件不依赖 `grain_engine` 仓库，PDK 就在本仓库的 `pdk-as/`。
+
+同一站点存在多语言实现时，产物按语言区分（`plugin_360zy_rust.wasm` /
+`plugin_360zy_ts.wasm`），清单条目带 `site` 与 `impl` 字段：宿主按 `site`
+分组展示、按 `package` 安装或更新。
+
+## TypeScript / AssemblyScript 插件
+
+除 Rust 插件外，仓库还内置一套面向 ABI v0.2 的 AssemblyScript PDK 与两个 TS 插件：
+
+```
+grain_plugins/
+├── pdk-as/                    # @grain/pdk-as
+│   ├── build.sh               # 封装 asc：固定 --baseDir 并注入自定义 abort
+│   ├── package.json           # assemblyscript 0.28.20
+│   ├── package-lock.json      # 必须入库，CI 用 npm ci 安装
+│   ├── src/                   # heap/strings/host/task/meta/index/abort
+│   ├── probe/ selftest/       # 端到端探针与自检（wasm 入库作为回归证据）
+│   └── README.md              # PDK 用法、模块表、ABI 约定
+└── plugins/
+    ├── 360zy/ts/              # 360资源（TS），入口 index.ts
+    └── bili-wbi/ts/           # 哔哩哔哩 WBI（TS），入口 index.ts
+```
+
+构建前置：Node.js 20+（`npx` 随 npm 提供）。首次构建先安装 PDK 依赖：
+
+```bash
+cd pdk-as && npm ci
+```
+
+`scripts/build_dist.sh` 在 Rust 构建之后调用 `bash pdk-as/build.sh` 构建两个 TS 插件，
+四枚 wasm 统一走 sha256 + Ed25519 签名并写入同一份 `manifest.json`。
+
+| 实现 | package | name | version | wasm 文件 |
+| --- | --- | --- | --- | --- |
+| Rust | `360zy.com` | 360资源 | v0.0.2 | `plugin_360zy.wasm` |
+| Rust | `bilibili.com.wbi` | 哔哩哔哩(WBI) | v0.1.0 | `plugin_bili_wbi.wasm` |
+| TS | `360zy.com.ts` | 360资源 (TS) | v0.0.2 | `plugin_360zy_ts.wasm` |
+| TS | `bilibili.com.wbi.ts` | 哔哩哔哩(WBI·TS) | v0.1.0 | `plugin_bili_wbi_ts.wasm` |
+
+TS 插件使用带 `.ts` 后缀的独立 package id，因此与同名 Rust 插件可并存安装、互不覆盖。
+
+TS 插件采用同步状态机模型：**没有 `async/await`**。宿主同步调用入口拿到 handle 后反复
+调用 `take_result`，插件 `Task.step()` 每次返回 `null`（宿主能力未完成）或结果字符串。
+完整用法、模块表与 ABI 约定见 [pdk-as/README.md](pdk-as/README.md)。
 
 ## manifest schema
 
@@ -100,31 +146,43 @@ afc918b1 eb5175ae 59ab3ae7 783e843a c7404316 b84dfad0 ad5c0b76 b95c26cb
 
 ## 新增插件
 
-1. 复制现有插件目录为 `plugins/<slug>/`，修改 `Cargo.toml` 的 `[package].name` 与源码
-   `plugin_meta!`（`package` / `name` / `version` 必须准确）。
-2. 在根 `Cargo.toml` 的 `members` 中加入 `"plugins/<slug>"`。
-3. 在 `scripts/build_dist.sh` 的 `PLUGINS` 表中追加一行
-   `产物crate名|wasm文件名|package|name|version`，与 `plugin_meta!` 保持同步。
-4. 本地跑一次 `scripts/build_dist.sh` 确认产物与签名正常。
+构建脚本按目录自动发现插件，**不需要修改任何脚本**：
+
+1. 新建 `plugins/<slug>/rust/`（复制现有 Rust 插件）和/或 `plugins/<slug>/ts/`；
+   元数据以源码为唯一事实来源：
+   - Rust：`plugin_meta!`（`package` / `name` / `version` / `webSite`）
+   - TS：`setMeta` 的 JSON 串（同上）
+   `site` 默认取 `webSite` 主机名（去掉 `www.`），也可在元数据里加
+   `"site": "example.com"` 显式指定。
+2. Rust 需把 `"plugins/<slug>/rust"` 加入根 `Cargo.toml` 的 `members`；
+   TS 无需登记。
+3. `package` 必须全局唯一（构建会拒绝重复）；同一站点多语言实现用不同
+   `package`（如 `x.com` / `x.com.ts`），并用相同 `site` 归组。
+4. 本地跑一次 `scripts/build_dist.sh` 确认产物与签名正常；
+   产物文件名自动为 `plugin_<slug>_<impl>.wasm`。
 5. 按下面的发布流程打 tag。
 
 ## 本地构建
 
 前置：Rust stable + `wasm32-unknown-unknown` 目标、OpenSSL 3.x（带 Ed25519）、
-`sha256sum`、`xxd`、Python 3。
+`sha256sum`、`xxd`、Python 3、Node.js 20+。
 
 ```bash
 rustup target add wasm32-unknown-unknown
+cd pdk-as && npm ci && cd ..
 
 PLUGIN_SIGNING_KEY=C:/Users/WH/.grain/plugin-signing.pem \
 TAG=v0.1.0-local \
 bash scripts/build_dist.sh
 ```
 
-产物写入 `dist/`：两个 wasm、`manifest.json`、`public.hex`。`dist/` 每次构建前清空。
+产物写入 `dist/`：四个 wasm（Rust 2 + TS 2）、`manifest.json`、`public.hex`。
+`dist/` 每次构建前清空。
 
 `scripts/build_dist.sh` 会自动探测 `python3` / `python` / `py`
 （Windows Git Bash 下 `python3` 可能是应用商店占位符，脚本会实际执行一次确认）。
+脚本同时检查 `node` / `npx` 与 `pdk-as/node_modules/.bin/asc`，任一缺失都会明确报错并提示
+`cd pdk-as && npm ci`。
 
 `.cargo/config.toml` 中的 `[target.x86_64-pc-windows-msvc]` 段用于本机无 MSVC
 Build Tools 时链接宿主侧 proc-macro；在其他机器上若 rust-lld 路径不同，需自行调整。
@@ -142,11 +200,12 @@ git push origin v0.1.0
 `.github/workflows/release.yml` 在 `v*` tag 推送时执行：
 
 1. 检出本仓库；
-2. 把 `grain_engine` 克隆到 workspace 上一级（供 PDK 路径依赖使用）；
-3. 安装 stable 工具链与 wasm32 目标；
-4. 从 secret 写出签名私钥到 runner 临时文件；
-5. 执行 `scripts/build_dist.sh`；
-6. `gh release create` 上传 `dist/*`。
+2. 把 `grain_engine` 克隆到 workspace 上一级（供 Rust PDK 路径依赖使用）；
+3. 安装 Node.js 20 并执行 `cd pdk-as && npm ci`；
+4. 安装 stable 工具链与 wasm32 目标；
+5. 从 secret 写出签名私钥到 runner 临时文件；
+6. 执行 `scripts/build_dist.sh`（Rust 2 枚 + TS 2 枚）；
+7. `gh release create` 上传 `dist/*`。
 
 ## 配置签名 secret
 
@@ -169,10 +228,12 @@ git push origin v0.1.0
 
 ## English summary
 
-`grain_plugins` is the plugin distribution repository for the grain engine. Plugin sources
-live under `plugins/`, are compiled to `wasm32-unknown-unknown`, hashed with SHA-256, signed
-with Ed25519 over the UTF-8 message `{package}|{version}|{sha256}`, and published as GitHub
-Release assets alongside a `manifest.json` (schema 1). Hosts fetch
+`grain_plugins` is the plugin distribution repository for the grain engine. Rust plugin
+sources live under `plugins/`, while two TypeScript plugins under `plugins-ts/` are built with
+the bundled AssemblyScript PDK in `pdk-as/` (their package ids carry a `.ts` suffix so they
+coexist with the Rust originals). All four artifacts are compiled to wasm, hashed with
+SHA-256, signed with Ed25519 over the UTF-8 message `{package}|{version}|{sha256}`, and
+published as GitHub Release assets alongside a `manifest.json` (schema 1). Hosts fetch
 `https://github.com/HW-public/grain_plugins/releases/latest/download/manifest.json`, verify
 the hash and signature against the bundled public key (`keys/public.hex`), and install only
 after verification passes. Pushing a `v*` tag triggers the release workflow; the signing key

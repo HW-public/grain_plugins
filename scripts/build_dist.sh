@@ -13,9 +13,12 @@ set -euo pipefail
 : "${TAG:?TAG is required (e.g. v0.1.0)}"
 : "${PLUGIN_SIGNING_KEY:?PLUGIN_SIGNING_KEY is required (path to Ed25519 PKCS#8 PEM)}"
 
-for bin in cargo openssl sha256sum xxd; do
+for bin in cargo openssl sha256sum xxd node npx; do
     command -v "$bin" >/dev/null 2>&1 || {
         echo "error: required command not found: $bin" >&2
+        if [ "$bin" = node ] || [ "$bin" = npx ]; then
+            echo "hint: TS plugins need Node.js 20+ (npx comes with npm)" >&2
+        fi
         exit 1
     }
 done
@@ -25,6 +28,12 @@ cd "$ROOT"
 
 TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}/wasm32-unknown-unknown/release"
 DIST="$ROOT/dist"
+
+# TS 插件构建依赖 pdk-as 的本地依赖（asc 0.28.20）。
+if [ ! -x "$ROOT/pdk-as/node_modules/.bin/asc" ]; then
+    echo "error: pdk-as dependencies missing; run: cd pdk-as && npm ci" >&2
+    exit 1
+fi
 
 # python3 在 Windows Git Bash 下可能是应用商店占位符，必须实际执行一次再判定。
 PYTHON=""
@@ -39,8 +48,21 @@ if [ -z "$PYTHON" ]; then
     exit 1
 fi
 
+# 清单含中文名：强制 Python 以 UTF-8 读写，避免 Windows 控制台代码页污染 TSV。
+export PYTHONUTF8=1
+export PYTHONIOENCODING=utf-8
+
 echo "==> cargo build --release --target wasm32-unknown-unknown"
 cargo build --release --target wasm32-unknown-unknown
+
+echo "==> AssemblyScript plugins (pdk-as)"
+for dir in "$ROOT"/plugins/*/ts; do
+    [ -d "$dir" ] || continue
+    plugin="$(basename "$(dirname "$dir")")"
+    out="$dir/build/plugin_${plugin//-/_}_ts.wasm"
+    mkdir -p "$dir/build"
+    bash "$ROOT/pdk-as/build.sh" "$dir/index.ts" "$out"
+done
 
 rm -rf "$DIST"
 mkdir -p "$DIST"
@@ -51,23 +73,50 @@ if [ "${#PUBKEY_HEX}" -ne 64 ]; then
     exit 1
 fi
 
-# 元数据表（与各插件源码里的 plugin_meta! 同步）。
-# 字段：crate 产物名 | wasm 文件名 | package | name | version
-PLUGINS=(
-    "plugin_360zy|plugin_360zy.wasm|360zy.com|360资源|v0.0.2"
-    "plugin_bili_wbi|plugin_bili_wbi.wasm|bilibili.com.wbi|哔哩哔哩(WBI)|v0.1.0"
-)
-
 TMPDIR_BUILD="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_BUILD"' EXIT
+
+# ---- 插件自动发现：不需要在此维护插件清单 ----
+# 目录约定 plugins/<插件名>/<语言>/；元数据以插件源码为唯一事实来源：
+#   rust/  -> 编译产物 grain.metadata custom section（scripts/meta_row.py）
+#   ts/    -> 实例化后读 metadata_json 导出（scripts/meta_ts.mjs）
+# 新增插件只需建目录与源码，本脚本零修改。清单行字段：
+#   源 wasm | 产物文件名 | package | name | version | site | impl
+ROWS="$TMPDIR_BUILD/rows.tsv"
+: > "$ROWS"
+
+echo "==> collect plugin metadata (auto-discovery)"
+for dir in "$ROOT"/plugins/*/rust; do
+    [ -d "$dir" ] || continue
+    plugin="$(basename "$(dirname "$dir")")"
+    crate="$(sed -n 's/^name = "\(.*\)"/\1/p' "$dir/Cargo.toml" | head -n1)"
+    if [ -z "$crate" ]; then
+        echo "error: cannot read [package] name from $dir/Cargo.toml" >&2
+        exit 1
+    fi
+    wasm="$TARGET_DIR/${crate//-/_}.wasm"
+    "$PYTHON" "$ROOT/scripts/meta_row.py" \
+        --wasm "$wasm" --plugin "$plugin" --impl rust >> "$ROWS"
+done
+
+for dir in "$ROOT"/plugins/*/ts; do
+    [ -d "$dir" ] || continue
+    plugin="$(basename "$(dirname "$dir")")"
+    wasm="$dir/build/plugin_${plugin//-/_}_ts.wasm"
+    meta="$(node "$ROOT/scripts/meta_ts.mjs" "$wasm")" || exit 1
+    "$PYTHON" "$ROOT/scripts/meta_row.py" \
+        --wasm "$wasm" --plugin "$plugin" --impl ts --json "$meta" >> "$ROWS"
+done
+
+if [ ! -s "$ROWS" ]; then
+    echo "error: no plugins discovered under $ROOT/plugins" >&2
+    exit 1
+fi
 
 ENTRIES="$TMPDIR_BUILD/entries.tsv"
 : > "$ENTRIES"
 
-for row in "${PLUGINS[@]}"; do
-    IFS='|' read -r crate_name file_name package name version <<< "$row"
-
-    src_wasm="$TARGET_DIR/$file_name"
+while IFS=$'\t' read -r src_wasm file_name package name version site impl; do
     if [ ! -f "$src_wasm" ]; then
         echo "error: missing build artifact: $src_wasm" >&2
         exit 1
@@ -86,11 +135,11 @@ for row in "${PLUGINS[@]}"; do
         -out "$TMPDIR_BUILD/signature.bin"
     signature="$(xxd -p "$TMPDIR_BUILD/signature.bin" | tr -d '\n')"
 
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$package" "$name" "$version" "$file_name" "$sha256" "$signature" >> "$ENTRIES"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$package" "$name" "$version" "$file_name" "$sha256" "$signature" "$site" "$impl" >> "$ENTRIES"
 
     echo "    $file_name  sha256=$sha256"
-done
+done < "$ROWS"
 
 "$PYTHON" - "$ENTRIES" "$TAG" "$DIST/manifest.json" <<'PY'
 import datetime
@@ -100,16 +149,22 @@ import sys
 entries_path, tag, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
 
 plugins = []
+seen_packages = set()
 with open(entries_path, encoding="utf-8") as fh:
     for line in fh:
         line = line.rstrip("\n")
         if not line:
             continue
-        package, name, version, file_name, sha256, signature = line.split("\t")
+        package, name, version, file_name, sha256, signature, site, impl = line.split("\t")
+        if package in seen_packages:
+            sys.exit(f"error: duplicate package id in manifest: {package}")
+        seen_packages.add(package)
         plugins.append({
             "package": package,
             "name": name,
             "version": version,
+            "site": site,
+            "impl": impl,
             "file": file_name,
             "url": (
                 "https://github.com/HW-public/grain_plugins/releases/download/"

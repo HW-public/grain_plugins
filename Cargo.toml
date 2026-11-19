@@ -1,5 +1,5 @@
 [workspace]
-members = ["plugins/360zy", "plugins/bili-wbi"]
+members = ["plugins/360zy/rust", "plugins/bili-wbi/rust"]
 resolver = "2"
 
 # 与 grain_engine/pdk/rust 的发布 profile 保持一致，保证产物尺寸可预期。

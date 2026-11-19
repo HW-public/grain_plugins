@@ -2,3 +2,18 @@ target/
 dist/
 *.pem
 *.key
+
+# Node / AssemblyScript 依赖
+node_modules/
+pdk-as/node_modules/
+
+# 插件构建产物（由 scripts/build_dist.sh 重新生成，不入库）
+pdk-as/**/build/
+plugins/**/build/
+
+# 例外：pdk-as/probe/*.wasm 与 pdk-as/selftest/*.wasm 作为回归证据入库
+# （各 < 100 KB）。不要添加全局 *.wasm 忽略规则，否则会误伤这些证据文件。
+
+# IDE
+.idea/
+.vscode/

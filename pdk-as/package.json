@@ -1,0 +1,7 @@
+{
+  "name": "@grain/pdk-as",
+  "private": true,
+  "devDependencies": {
+    "assemblyscript": "^0.28.20"
+  }
+}

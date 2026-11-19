@@ -7,5 +7,5 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-grain-pdk = { path = "../../../grain_engine/pdk/rust/crates/pdk" }
+grain-pdk = { path = "../../../../grain_engine/pdk/rust/crates/pdk" }
 serde_json = "1"

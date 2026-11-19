@@ -18,6 +18,14 @@ jobs:
       - name: Checkout grain_engine (PDK sources)
         run: git clone --depth 1 https://github.com/HW-public/grain_engine.git ../grain_engine
 
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pdk-as dependencies
+        run: cd pdk-as && npm ci
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
