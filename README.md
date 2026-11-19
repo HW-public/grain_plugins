@@ -63,7 +63,7 @@ cd pdk-as && npm ci
 ```
 
 `scripts/build_dist.sh` 在 Rust 构建之后调用 `bash pdk-as/build.sh` 构建两个 TS 插件，
-四枚 wasm 统一走 sha256 + Ed25519 签名并写入同一份 `manifest.json`。
+各插件产物统一走 sha256 + Ed25519 签名并写入同一份 `manifest.json`。
 
 | 实现 | package | name | version | wasm 文件 |
 | --- | --- | --- | --- | --- |
@@ -176,7 +176,7 @@ TAG=v0.1.0-local \
 bash scripts/build_dist.sh
 ```
 
-产物写入 `dist/`：四个 wasm（Rust 2 + TS 2）、`manifest.json`、`public.hex`。
+产物写入 `dist/`：Rust 2 + TS 3（360zy / bili-wbi / vdm8）共五个 wasm、`manifest.json`、`public.hex`。
 `dist/` 每次构建前清空。
 
 `scripts/build_dist.sh` 会自动探测 `python3` / `python` / `py`
