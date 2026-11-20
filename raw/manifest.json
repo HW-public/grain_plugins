@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-11-20T01:05:21Z",
+  "plugins": [
+    {
+      "package": "360zy.com",
+      "name": "360资源",
+      "version": "v0.0.2",
+      "site": "360zy.com",
+      "impl": "rust",
+      "file": "plugin_360zy_rust.wasm",
+      "url": "https://github.com/HW-public/grain_plugins/releases/download/v0.1.0-local/plugin_360zy_rust.wasm",
+      "sha256": "17e94518e1747677f3e326f5f3e71d1e13cc9aa5edc6ebcb261b6f7d64bd2eef",
+      "signature": "fa3a3fe340c1b46ac6bd687acda05bf9dab1c1c56e6ae49177bc802d1278b8250e3e1c86ca1be44959b7d81d86517b0b4d7d0ec2d277d4252be3c76c1f9cfb08"
+    },
+    {
+      "package": "bilibili.com.wbi",
+      "name": "哔哩哔哩(WBI)",
+      "version": "v0.1.0",
+      "site": "bilibili.com",
+      "impl": "rust",
+      "file": "plugin_bili_wbi_rust.wasm",
+      "url": "https://github.com/HW-public/grain_plugins/releases/download/v0.1.0-local/plugin_bili_wbi_rust.wasm",
+      "sha256": "a6d2ff8959853e102f78425f52ad983af6221d27a9a4d47c83cb7d098cb85b99",
+      "signature": "fcb882b0189a20df893a0a7d1ed853218908b22b5cf350a54a69850e5fb196e38277037ffa1ee768c8e18f132e74e322d534e510b649fc8725b0a3d7fcfe8e08"
+    },
+    {
+      "package": "360zy.com.ts",
+      "name": "360资源 (TS)",
+      "version": "v0.0.2",
+      "site": "360zy.com",
+      "impl": "ts",
+      "file": "plugin_360zy_ts.wasm",
+      "url": "https://github.com/HW-public/grain_plugins/releases/download/v0.1.0-local/plugin_360zy_ts.wasm",
+      "sha256": "37d63d0f65a07b562bc42d1c17bc9aaa8e16ddf94a65c6c94b55eef70abce403",
+      "signature": "7181499241e58cccf7b53aecbf4c2aa8e6315a9b0c08f1dc9c23349fefe649e331336a9a0af0e910361bd7161e34a4502b5a1827464c1e52549d3775a445cb00"
+    },
+    {
+      "package": "bilibili.com.wbi.ts",
+      "name": "哔哩哔哩(WBI·TS)",
+      "version": "v0.1.0",
+      "site": "bilibili.com",
+      "impl": "ts",
+      "file": "plugin_bili_wbi_ts.wasm",
+      "url": "https://github.com/HW-public/grain_plugins/releases/download/v0.1.0-local/plugin_bili_wbi_ts.wasm",
+      "sha256": "f8dd30d73d9ce13b705edf9316ebcc5be41c49550b094062c56c03f9ab064fd8",
+      "signature": "e1f4f4f930b2535ef00484a14628b0c3d66eb7cc3a743083b7855af120d357cb0b82b5ca9e5b7137eb760394041b06f34837e9eb32a78305794f937776cebe06"
+    },
+    {
+      "package": "vdm8.com",
+      "name": "V动漫",
+      "version": "v1.0.0",
+      "site": "vdm8.com",
+      "impl": "ts",
+      "file": "plugin_vdm8_ts.wasm",
+      "url": "https://github.com/HW-public/grain_plugins/releases/download/v0.1.0-local/plugin_vdm8_ts.wasm",
+      "sha256": "9c0dfb778bc1042f6e68cde2ca37c564996859c2b7fea620f840349f88ddc2ec",
+      "signature": "f1b796678de9876c7d5ba3f30d5a46b9f337c2c7893c741d657d3c3085d279883e1d5fdc4c7b4e70352bbede78f3504cffd797486046b2986100de558ffc8100"
+    }
+  ]
+}
