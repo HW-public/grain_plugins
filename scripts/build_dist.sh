@@ -187,6 +187,27 @@ PY
 
 printf '%s\n' "$PUBKEY_HEX" > "$DIST/public.hex"
 
+# raw/ 镜像：仓库静态文件走 raw.githubusercontent.com（无 Release 附件依赖）。
+# manifest.url 改为 raw 地址；wasm 与 dist 字节一致，sha256/签名可直接复用。
+cp "$DIST"/*.wasm "$DIST/public.hex" "$ROOT/raw/"
+"$PYTHON" - "$ENTRIES" "$DIST/manifest.json" "$ROOT/raw/manifest.json" <<'PY'
+import json
+import sys
+
+entries_path, dist_manifest_path, raw_manifest_path = sys.argv[1], sys.argv[2], sys.argv[3]
+
+manifest = json.load(open(dist_manifest_path, encoding="utf-8"))
+for p in manifest["plugins"]:
+    p["url"] = (
+        "https://raw.githubusercontent.com/HW-public/grain_plugins/main/"
+        f"raw/{p['file']}"
+    )
+
+with open(raw_manifest_path, "w", encoding="utf-8", newline="\n") as fh:
+    json.dump(manifest, fh, ensure_ascii=False, indent=2)
+    fh.write("\n")
+PY
+
 rm -f "$TMPDIR_BUILD/message.bin" "$TMPDIR_BUILD/signature.bin"
 
 echo "==> dist ready:"
